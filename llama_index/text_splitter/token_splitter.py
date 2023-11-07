@@ -60,6 +60,10 @@ class TokenTextSplitter(MetadataAwareTextSplitter):
             )
         callback_manager = callback_manager or CallbackManager([])
         tokenizer = tokenizer or globals_helper.tokenizer
+        if self.tokenizer.__class__.__name__ == 'LlamaTokenizerFast':
+            tokenize_func = lambda x: self.tokenizer(x)['input_ids']
+        else:
+            tokenize_func = self.tokenizer
 
         all_seps = [separator] + (backup_separators or [])
         self._split_fns = [split_by_sep(sep) for sep in all_seps] + [split_by_char()]
@@ -79,7 +83,7 @@ class TokenTextSplitter(MetadataAwareTextSplitter):
 
     def split_text_metadata_aware(self, text: str, metadata_str: str) -> List[str]:
         """Split text into chunks, reserving space required for metadata str."""
-        metadata_len = len(self.tokenizer(metadata_str)) + DEFAULT_METADATA_FORMAT_LEN
+        metadata_len = len(tokenize_func(metadata_str)) + DEFAULT_METADATA_FORMAT_LEN
         effective_chunk_size = self.chunk_size - metadata_len
         if effective_chunk_size <= 0:
             raise ValueError(
@@ -129,7 +133,7 @@ class TokenTextSplitter(MetadataAwareTextSplitter):
 
         NOTE: the splits contain the separators.
         """
-        if len(self.tokenizer(text)) <= chunk_size:
+        if len(tokenize_func(text)) <= chunk_size:
             return [text]
 
         for split_fn in self._split_fns:
@@ -139,7 +143,7 @@ class TokenTextSplitter(MetadataAwareTextSplitter):
 
         new_splits = []
         for split in splits:
-            split_len = len(self.tokenizer(split))
+            split_len = len(tokenize_func(split))
             if split_len <= chunk_size:
                 new_splits.append(split)
             else:
@@ -161,7 +165,7 @@ class TokenTextSplitter(MetadataAwareTextSplitter):
         cur_chunk: List[str] = []
         cur_len = 0
         for split in splits:
-            split_len = len(self.tokenizer(split))
+            split_len = len(tokenize_func(split))
             if split_len > chunk_size:
                 _logger.warning(
                     f"Got a split of size {split_len}, ",
@@ -183,7 +187,7 @@ class TokenTextSplitter(MetadataAwareTextSplitter):
                 while cur_len > self.chunk_overlap or cur_len + split_len > chunk_size:
                     # pop off the first element
                     first_chunk = cur_chunk.pop(0)
-                    cur_len -= len(self.tokenizer(first_chunk))
+                    cur_len -= len(tokenize_func(first_chunk))
 
             cur_chunk.append(split)
             cur_len += split_len

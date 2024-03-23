@@ -169,21 +169,23 @@ class PlanAndQuerySQLParser(BaseSQLParser):
 
     def parse_response_to_sql(self, response: str, query_bundle: QueryBundle) -> str:
         """Parse response to SQL."""
-        plan_start = response.find("Plan:")
+        plan_start = response.find("Plan:") or 0
         if plan_start != -1:
             plan = response[plan_start:]
-            plan = plan.removeprefix("Plan:")
 
         sql_query_start = response.find("SQLQuery:")
         if sql_query_start != -1:
-            plan = plan[:sql_query_start].strip()
+            plan = plan[:sql_query_start]
+            plan = plan.removeprefix("Plan:").strip()
 
-            sql_response = response[sql_query_start:]
-            sql_response = sql_response.removeprefix("SQLQuery:").strip().strip('```').strip().strip('sql').strip()
+            sql_query = response[sql_query_start:]
         
-        sql_result_start = response.find("SQLResult:")
+        sql_result_start = sql_query.find("SQLResult:")
         if sql_result_start != -1:
-            sql_response = sql_response[:sql_result_start]
+            sql_query = sql_query[:sql_result_start]
+            sql_query = sql_query.removeprefix("SQLQuery:").strip().strip('```').strip().strip('sql').strip()
+    
+        return plan, sql_query
 
         
         
@@ -278,7 +280,7 @@ class NLSQLRetriever(BaseRetriever, PromptMixin):
         elif sql_parser_mode == SQLParserMode.PGVECTOR:
             return PGVectorSQLParser(embed_model=embed_model)
         elif sql_parser_mode == SQLParserMode.PLAN_AND_QUERY:
-            return 'pass'
+            return PlanAndQuerySQLParser()
         else:
             raise ValueError(f"Unknown SQL parser mode: {sql_parser_mode}")
 
@@ -327,11 +329,23 @@ class NLSQLRetriever(BaseRetriever, PromptMixin):
             dialect=self._sql_database.dialect,
         )
 
-        sql_query_str = self._sql_parser.parse_response_to_sql(
-            response_str, query_bundle
-        )
-        # assume that it's a valid SQL query
-        logger.debug(f"> Predicted SQL query: {sql_query_str}")
+        if self._sql_parser_mode == SQLParserMode.PLAN_AND_QUERY:
+            plan, sql_query_str = self._sql_parser.parse_response_to_sql(
+                response_str, query_bundle
+            )
+            planning_metadata = {"plan": plan}
+            
+            logger.debug(f"> Predicted SQL query: {sql_query_str}")
+            logger.debug(f"> Plan: {plan}")
+        
+        else:
+            sql_query_str = self._sql_parser.parse_response_to_sql(
+                response_str, query_bundle
+            )
+            planning_metadata = {}
+            # assume that it's a valid SQL query
+            logger.debug(f"> Predicted SQL query: {sql_query_str}")
+
         if self._verbose:
             print(f"> Predicted SQL query: {sql_query_str}")
 
@@ -353,7 +367,7 @@ class NLSQLRetriever(BaseRetriever, PromptMixin):
                 else:
                     raise
 
-        return retrieved_nodes, {"sql_query": sql_query_str, **metadata}
+        return retrieved_nodes, {"sql_query": sql_query_str, **metadata, **planning_metadata}
 
     async def aretrieve_with_metadata(
         self, str_or_query_bundle: QueryType

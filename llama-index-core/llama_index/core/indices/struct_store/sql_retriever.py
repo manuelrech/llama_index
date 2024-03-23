@@ -107,6 +107,7 @@ class SQLParserMode(str, Enum):
 
     DEFAULT = "default"
     PGVECTOR = "pgvector"
+    PLAN_AND_QUERY = "plan_and_query"
 
 
 class BaseSQLParser(ABC):
@@ -162,6 +163,30 @@ class PGVectorSQLParser(BaseSQLParser):
         query_embedding_str = str(query_embedding)
         return raw_sql_str.replace("[query_vector]", query_embedding_str)
 
+
+class PlanAndQuerySQLParser(BaseSQLParser):
+    """Plan and Query SQL Parser."""
+
+    def parse_response_to_sql(self, response: str, query_bundle: QueryBundle) -> str:
+        """Parse response to SQL."""
+        plan_start = response.find("Plan:")
+        if plan_start != -1:
+            plan = response[plan_start:]
+            plan = plan.removeprefix("Plan:")
+
+        sql_query_start = response.find("SQLQuery:")
+        if sql_query_start != -1:
+            plan = plan[:sql_query_start].strip()
+
+            sql_response = response[sql_query_start:]
+            sql_response = sql_response.removeprefix("SQLQuery:").strip().strip('```').strip().strip('sql').strip()
+        
+        sql_result_start = response.find("SQLResult:")
+        if sql_result_start != -1:
+            sql_response = sql_response[:sql_result_start]
+
+        
+        
 
 class NLSQLRetriever(BaseRetriever, PromptMixin):
     """Text-to-SQL Retriever.
@@ -252,6 +277,8 @@ class NLSQLRetriever(BaseRetriever, PromptMixin):
             return DefaultSQLParser()
         elif sql_parser_mode == SQLParserMode.PGVECTOR:
             return PGVectorSQLParser(embed_model=embed_model)
+        elif sql_parser_mode == SQLParserMode.PLAN_AND_QUERY:
+            return 'pass'
         else:
             raise ValueError(f"Unknown SQL parser mode: {sql_parser_mode}")
 

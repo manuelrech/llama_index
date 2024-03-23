@@ -427,7 +427,8 @@ class NLSQLTableQueryEngine(BaseSQLTableQueryEngine):
 
     def __init__(
         self,
-        sql_database: SQLDatabase,
+        sql_database: Optional[SQLDatabase] = None,
+        sql_retriever: Optional[NLSQLRetriever] = None,
         llm: Optional[LLM] = None,
         text_to_sql_prompt: Optional[BasePromptTemplate] = None,
         context_query_kwargs: Optional[dict] = None,
@@ -444,18 +445,25 @@ class NLSQLTableQueryEngine(BaseSQLTableQueryEngine):
     ) -> None:
         """Initialize params."""
         # self._tables = tables
-        self._sql_retriever = NLSQLRetriever(
-            sql_database,
-            llm=llm,
-            text_to_sql_prompt=text_to_sql_prompt,
-            context_query_kwargs=context_query_kwargs,
-            tables=tables,
-            context_str_prefix=context_str_prefix,
-            service_context=service_context,
-            sql_only=sql_only,
-            callback_manager=callback_manager,
-            verbose=verbose,
-        )
+        # Check that exactly one of sql_database or sql_retriever is provided
+        if (sql_database is None) == (sql_retriever is None):  # True if both are None or both are not None
+            raise ValueError("Exactly one of sql_database or sql_retriever must be provided.")
+
+        if sql_retriever is None:
+            sql_retriever = NLSQLRetriever(
+                sql_database,
+                llm=llm,
+                text_to_sql_prompt=text_to_sql_prompt,
+                context_query_kwargs=context_query_kwargs,
+                tables=tables,
+                context_str_prefix=context_str_prefix,
+                service_context=service_context,
+                sql_only=sql_only,
+                callback_manager=callback_manager,
+                verbose=verbose,
+            )
+        
+        self._sql_retriever = sql_retriever
         super().__init__(
             synthesize_response=synthesize_response,
             response_synthesis_prompt=response_synthesis_prompt,
